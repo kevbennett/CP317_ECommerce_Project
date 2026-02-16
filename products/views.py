@@ -13,7 +13,10 @@ def product_list(request):
 
 @api_view(['GET'])
 def product_detail(request, pk):
-    product = Product.objects.get(pk=pk)
+    try:
+        product = Product.objects.get(pk=pk)
+    except:
+        return Response({'error': 'Product not found'}, status=404)
     serializer = ProductSerializer(product)
     return Response(serializer.data)
 
