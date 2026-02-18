@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import './App.css'
+import { Button, Layout, Menu, Result, Typography } from 'antd'
 import CartPage from './pages/CartPage'
 import HomePage from './pages/HomePage'
 import ProductsPage from './pages/ProductsPage'
@@ -7,6 +7,9 @@ import ProductsPage from './pages/ProductsPage'
 type RoutePath = '/' | '/products' | '/cart'
 
 function App() {
+  const { Header, Content } = Layout
+  const { Title, Text } = Typography
+
   const normalizePath = (pathname: string): RoutePath | null => {
     const cleanPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
     if (cleanPath === '/' || cleanPath === '/products' || cleanPath === '/cart') {
@@ -31,65 +34,56 @@ function App() {
     setCurrentPath(to)
   }
 
-  const isActive = (to: RoutePath) => activeRoute === to
-
   return (
-    <>
-      <header className="site-header">
-        <div className="site-header-inner">
-          <button className="brand-button" onClick={() => navigate('/')}>
-            Canadian Catalog
-          </button>
-          <nav className="site-nav">
-            <a
-              href="/"
-              className={isActive('/') ? 'active' : ''}
-              onClick={(event) => {
-                event.preventDefault()
-                navigate('/')
-              }}
-            >
-              Home
-            </a>
-            <a
-              href="/products"
-              className={isActive('/products') ? 'active' : ''}
-              onClick={(event) => {
-                event.preventDefault()
-                navigate('/products')
-              }}
-            >
-              Products
-            </a>
-            <a
-              href="/cart"
-              className={isActive('/cart') ? 'active' : ''}
-              onClick={(event) => {
-                event.preventDefault()
-                navigate('/cart')
-              }}
-            >
-              Cart
-            </a>
-          </nav>
-        </div>
-      </header>
+    <Layout style={{ minHeight: '100vh' }}>
+      <Header
+        style={{
+          position: 'sticky',
+          top: 0,
+          zIndex: 100,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 16,
+          backgroundColor: '#fff',
+          borderBottom: '1px solid #f0f0f0',
+          paddingInline: 24,
+        }}
+      >
+        <Button type="text" onClick={() => navigate('/')}>
+          <Text strong>Canadian Catalog</Text>
+        </Button>
+        <Menu
+          mode="horizontal"
+          selectedKeys={activeRoute ? [activeRoute] : []}
+          items={[
+            { key: '/', label: 'Home' },
+            { key: '/products', label: 'Products' },
+            { key: '/cart', label: 'Cart' },
+          ]}
+          onClick={({ key }) => navigate(key as RoutePath)}
+          style={{ minWidth: 280, flex: 1, justifyContent: 'flex-end' }}
+        />
+      </Header>
 
-      <main className="page">
+      <Content style={{ maxWidth: 1180, margin: '0 auto', padding: '32px 20px 48px', width: '100%' }}>
         {activeRoute === '/' && <HomePage onNavigate={navigate} />}
         {activeRoute === '/products' && <ProductsPage />}
         {activeRoute === '/cart' && <CartPage />}
         {activeRoute === null && (
-          <section className="content-panel">
-            <h1>Page Not Found</h1>
-            <p className="subhead">This route does not exist in the frontend app.</p>
-            <button className="primary-link" onClick={() => navigate('/')}>
-              Go to Home
-            </button>
-          </section>
+          <Result
+            status="404"
+            title={<Title level={2}>Page Not Found</Title>}
+            subTitle="This route does not exist in the frontend app."
+            extra={
+              <Button type="primary" onClick={() => navigate('/')}>
+                Go to Home
+              </Button>
+            }
+          />
         )}
-      </main>
-    </>
+      </Content>
+    </Layout>
   )
 }
 
