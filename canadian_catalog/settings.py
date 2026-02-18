@@ -33,8 +33,12 @@ ALLOWED_HOSTS = []
 
 INSTALLED_APPS = [
     'products.apps.ProductsConfig',
+    'users.apps.UsersConfig',
     'corsheaders',
     'rest_framework',
+    'rest_framework.authtoken',
+    
+    #Default Django apps
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -130,3 +134,9 @@ STATIC_URL = 'static/'
 # Media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+    ],
+}
