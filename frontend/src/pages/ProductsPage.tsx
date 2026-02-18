@@ -8,6 +8,7 @@ type Product = {
   description: string
   image: string
   category: number
+  category_name?: string
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
@@ -105,7 +106,7 @@ function ProductsPage() {
                       </Paragraph>
                       <Text strong>${Number(product.price).toFixed(2)}</Text>
                       <div style={{ marginTop: 8 }}>
-                        <Tag>Category #{product.category}</Tag>
+                        <Tag>{product.category_name ?? `Category #${product.category}`}</Tag>
                       </div>
                     </>
                   }
