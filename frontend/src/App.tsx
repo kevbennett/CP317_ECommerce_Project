@@ -1,41 +1,25 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Button, Layout, Menu, Result, Typography } from 'antd'
-import CartPage from './pages/CartPage'
+import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { Layout, Menu, Button, Typography } from 'antd'
 import HomePage from './pages/HomePage'
 import ProductsPage from './pages/ProductsPage'
-
-type RoutePath = '/' | '/products' | '/cart'
+import CartPage from './pages/CartPage'
+import ProductDetailsPage from './pages/ProductDetailsPage'
 
 function App() {
-  const { Header, Content } = Layout
-  const { Title, Text } = Typography
+  const { Header, Content, Footer } = Layout
+  const { Text } = Typography
+  const navigate = useNavigate()
+  const location = useLocation()
 
-  const normalizePath = (pathname: string): RoutePath | null => {
-    const cleanPath = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname
-    if (cleanPath === '/' || cleanPath === '/products' || cleanPath === '/cart') {
-      return cleanPath
-    }
-    return null
-  }
-
-  const [currentPath, setCurrentPath] = useState<string>(window.location.pathname)
-
-  useEffect(() => {
-    const onPopState = () => setCurrentPath(window.location.pathname)
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [])
-
-  const activeRoute = useMemo(() => normalizePath(currentPath), [currentPath])
-
-  const navigate = (to: RoutePath) => {
-    if (window.location.pathname === to) return
-    window.history.pushState({}, '', to)
-    setCurrentPath(to)
-  }
+  // keep menu selection correct on /products/:id
+  const selectedKey = location.pathname.startsWith('/products')
+    ? '/products'
+    : location.pathname.startsWith('/cart')
+    ? '/cart'
+    : '/'
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', background: '#fff' }}>
       <Header
         style={{
           position: 'sticky',
@@ -44,45 +28,54 @@ function App() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 16,
           backgroundColor: '#fff',
-          borderBottom: '1px solid #f0f0f0',
+          borderBottom: '1px solid rgba(0,0,0,0.06)',
           paddingInline: 24,
         }}
       >
-        <Button type="text" onClick={() => navigate('/')}>
-          <Text strong>Canadian Catalog</Text>
+        <Button type="text" onClick={() => navigate('/')} style={{ paddingInline: 8 }}>
+          <Text strong style={{ fontSize: 16 }}>
+            Canadian Catalog
+          </Text>
         </Button>
+
         <Menu
           mode="horizontal"
-          selectedKeys={activeRoute ? [activeRoute] : []}
+          selectedKeys={[selectedKey]}
+          onClick={({ key }) => navigate(key)}
           items={[
             { key: '/', label: 'Home' },
             { key: '/products', label: 'Products' },
             { key: '/cart', label: 'Cart' },
           ]}
-          onClick={({ key }) => navigate(key as RoutePath)}
-          style={{ minWidth: 280, flex: 1, justifyContent: 'flex-end' }}
+          style={{
+            minWidth: 320,
+            display: 'flex',
+            justifyContent: 'flex-end',
+            borderBottom: 'none',
+          }}
         />
       </Header>
 
-      <Content style={{ maxWidth: 1180, margin: '0 auto', padding: '32px 20px 48px', width: '100%' }}>
-        {activeRoute === '/' && <HomePage onNavigate={navigate} />}
-        {activeRoute === '/products' && <ProductsPage />}
-        {activeRoute === '/cart' && <CartPage />}
-        {activeRoute === null && (
-          <Result
-            status="404"
-            title={<Title level={2}>Page Not Found</Title>}
-            subTitle="This route does not exist in the frontend app."
-            extra={
-              <Button type="primary" onClick={() => navigate('/')}>
-                Go to Home
-              </Button>
-            }
-          />
-        )}
+      <Content
+        style={{
+          maxWidth: 1180,
+          margin: '0 auto',
+          padding: '28px 20px 48px',
+          width: '100%',
+        }}
+      >
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/products" element={<ProductsPage />} />
+          <Route path="/products/:id" element={<ProductDetailsPage />} />
+          <Route path="/cart" element={<CartPage />} />
+        </Routes>
       </Content>
+
+      <Footer style={{ textAlign: 'center', background: '#fff' }}>
+        Canadian Catalog ©2026
+      </Footer>
     </Layout>
   )
 }
