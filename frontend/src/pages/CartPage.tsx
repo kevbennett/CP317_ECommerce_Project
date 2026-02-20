@@ -1,225 +1,215 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Card, Divider, Empty, InputNumber, List, Space, Typography } from 'antd'
 
 type CartItem = {
   id: number
   name: string
   price: number
-  image?: string
-  quantity: number
+  qty: number
 }
 
-const CART_STORAGE_KEY = 'cart'
+const CART_KEY = 'cart'
 
 function safeParseCart(raw: string | null): CartItem[] {
   if (!raw) return []
   try {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
+    // Light validation so bad data doesn’t break the page
     return parsed
-      .map((item) => ({
-        id: Number(item.id),
-        name: String(item.name ?? ''),
-        price: Number(item.price),
-        image: item.image ? String(item.image) : undefined,
-        quantity: Math.max(1, Number(item.quantity ?? 1)),
+      .filter((x) => x && typeof x === 'object')
+      .map((x: any) => ({
+        id: Number(x.id),
+        name: String(x.name ?? ''),
+        price: Number(x.price),
+        qty: Number(x.qty),
       }))
-      .filter(
-        (item) =>
-          Number.isFinite(item.id) &&
-          item.name.length > 0 &&
-          Number.isFinite(item.price) &&
-          Number.isFinite(item.quantity)
-      )
+      .filter((x) => Number.isFinite(x.id) && x.name.length > 0 && Number.isFinite(x.price) && Number.isFinite(x.qty))
   } catch {
     return []
   }
 }
 
 function loadCart(): CartItem[] {
-  return safeParseCart(window.localStorage.getItem(CART_STORAGE_KEY))
+  return safeParseCart(localStorage.getItem(CART_KEY))
 }
 
-function saveCart(items: CartItem[]) {
-  window.localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items))
+function saveCart(cart: CartItem[]) {
+  localStorage.setItem(CART_KEY, JSON.stringify(cart))
 }
 
-function navigateTo(path: '/' | '/products' | '/cart') {
-  if (window.location.pathname === path) return
-  window.history.pushState({}, '', path)
-  window.dispatchEvent(new PopStateEvent('popstate'))
+function formatMoney(value: number): string {
+  // Avoid Intl to keep it simple/portable
+  return `$${value.toFixed(2)}`
 }
 
 function CartPage() {
-  const [items, setItems] = useState<CartItem[]>([])
+  const { Title, Text } = Typography
 
+  const [cart, setCart] = useState<CartItem[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  // Load cart on first render
   useEffect(() => {
-    setItems(loadCart())
+    try {
+      setCart(loadCart())
+    } catch {
+      setError('Could not load cart data.')
+      setCart([])
+    }
   }, [])
 
-  const subtotal = useMemo(() => {
-    return items.reduce((sum, item) => sum + item.price * item.quantity, 0)
-  }, [items])
+  // Keep localStorage in sync whenever cart changes
+  useEffect(() => {
+    try {
+      saveCart(cart)
+    } catch {
+      // If storage fails (rare), keep UI working
+      setError('Could not save cart changes (storage error).')
+    }
+  }, [cart])
 
-  const updateQty = (id: number, qty: number) => {
-    const next = items.map((item) =>
-      item.id === id ? { ...item, quantity: Math.max(1, qty) } : item
-    )
-    setItems(next)
-    saveCart(next)
+  const subtotal = useMemo(() => {
+    let sum = 0
+    for (const item of cart) {
+      sum += item.price * item.qty
+    }
+    return sum
+  }, [cart])
+
+  const itemCount = useMemo(() => {
+    let count = 0
+    for (const item of cart) count += item.qty
+    return count
+  }, [cart])
+
+  const updateQty = (id: number, nextQty: number) => {
+    // Clamp to [1, 99] to avoid weird values
+    const qty = Math.max(1, Math.min(99, Math.floor(nextQty || 1)))
+    setCart((prev) => prev.map((item) => (item.id === id ? { ...item, qty } : item)))
   }
 
   const removeItem = (id: number) => {
-    const next = items.filter((item) => item.id !== id)
-    setItems(next)
-    saveCart(next)
+    setCart((prev) => prev.filter((item) => item.id !== id))
   }
 
   const clearCart = () => {
-    setItems([])
-    saveCart([])
+    setCart([])
+  }
+
+  const navigateTo = (path: string) => {
+    window.history.pushState({}, '', path)
+    window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
   return (
-    <section className="content-panel">
-      <p className="eyebrow">Cart</p>
-      <h1>Shopping cart</h1>
-      <p className="subhead">Review your items, update quantities, or remove products.</p>
+    <>
+      <Card style={{ marginBottom: 16 }}>
+        <Text type="secondary">CART</Text>
+        <Title level={2} style={{ marginTop: 8, marginBottom: 0 }}>
+          Shopping Cart
+        </Title>
+        <Text type="secondary">
+          {itemCount} item{itemCount === 1 ? '' : 's'}
+        </Text>
+      </Card>
 
-      {items.length === 0 ? (
-        <div style={{ marginTop: '1.25rem' }}>
-          <p className="state-message">Your cart is empty.</p>
-          <button className="primary-link" onClick={() => navigateTo('/products')}>
-            Browse products
-          </button>
-        </div>
-      ) : (
-        <div style={{ marginTop: '1.5rem', display: 'grid', gap: '1rem' }}>
-          {/* Items */}
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
-            {items.map((item) => (
-              <article
-                key={item.id}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '96px 1fr auto',
-                  gap: '0.9rem',
-                  alignItems: 'center',
-                  border: '1px solid #d6e1db',
-                  borderRadius: '14px',
-                  padding: '0.85rem',
-                  background: '#ffffff',
-                }}
-              >
-                <div
-                  style={{
-                    width: 96,
-                    height: 72,
-                    borderRadius: 12,
-                    overflow: 'hidden',
-                    background: '#e5efea',
-                    display: 'grid',
-                    placeItems: 'center',
-                  }}
-                >
-                  {item.image ? (
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                    />
-                  ) : (
-                    <span style={{ color: '#60766d', fontSize: 12 }}>No image</span>
-                  )}
-                </div>
-
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, color: '#12342a' }}>{item.name}</div>
-                  <div style={{ color: '#43534d', marginTop: 4 }}>
-                    ${item.price.toFixed(2)} each
-                  </div>
-
-                  <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    <button
-                      className="secondary-link"
-                      onClick={() => updateQty(item.id, item.quantity - 1)}
-                    >
-                      −
-                    </button>
-
-                    <input
-                      type="number"
-                      min={1}
-                      value={item.quantity}
-                      onChange={(e) => updateQty(item.id, Number(e.target.value || 1))}
-                      style={{
-                        width: 72,
-                        padding: '0.55rem 0.6rem',
-                        borderRadius: 10,
-                        border: '1px solid #c7d8d0',
-                        fontWeight: 700,
-                      }}
-                    />
-
-                    <button
-                      className="secondary-link"
-                      onClick={() => updateQty(item.id, item.quantity + 1)}
-                    >
-                      +
-                    </button>
-
-                    <button
-                      className="secondary-link"
-                      onClick={() => removeItem(item.id)}
-                      style={{ borderColor: '#e1b7b7', color: '#9a1a1a' }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontWeight: 800, color: '#12342a' }}>
-                    ${(item.price * item.quantity).toFixed(2)}
-                  </div>
-                  <div style={{ color: '#43534d', fontSize: 12, marginTop: 4 }}>Line total</div>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          {/* Summary */}
-          <div
-            style={{
-              border: '1px solid #d6e1db',
-              borderRadius: 16,
-              padding: '1.1rem',
-              background: '#ffffff',
-              boxShadow: '0 8px 18px rgba(15, 35, 27, 0.06)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ fontWeight: 800, color: '#12342a' }}>Subtotal</div>
-              <div style={{ fontWeight: 800, color: '#12342a' }}>${subtotal.toFixed(2)}</div>
-            </div>
-
-            <div style={{ marginTop: 12 }} className="cta-row">
-              <button className="secondary-link" onClick={() => navigateTo('/products')}>
-                Continue shopping
-              </button>
-              <button className="secondary-link" onClick={clearCart}>
-                Clear cart
-              </button>
-              <button
-                className="primary-link"
-                onClick={() => alert('Checkout coming soon (Sprint 2).')}
-              >
-                Proceed to checkout
-              </button>
-            </div>
-          </div>
-        </div>
+      {error && (
+        <Alert
+          type="warning"
+          showIcon
+          message={error}
+          style={{ marginBottom: 16 }}
+        />
       )}
-    </section>
+
+      {cart.length === 0 ? (
+        <Card>
+          <Empty description="Your cart is empty." />
+          <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
+            <Button type="primary" onClick={() => navigateTo('/products')}>
+              Browse Products
+            </Button>
+          </div>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <List
+              dataSource={cart}
+              rowKey={(item) => String(item.id)}
+              renderItem={(item) => {
+                const lineTotal = item.price * item.qty
+                return (
+                  <List.Item
+                    actions={[
+                      <Button danger onClick={() => removeItem(item.id)} key="remove">
+                        Remove
+                      </Button>,
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={
+                        <Space direction="vertical" size={0}>
+                          <Text strong>{item.name}</Text>
+                          <Text type="secondary">{formatMoney(item.price)} each</Text>
+                        </Space>
+                      }
+                      description={
+                        <Space size="large" wrap>
+                          <Space>
+                            <Text>Qty:</Text>
+                            <InputNumber
+                              min={1}
+                              max={99}
+                              value={item.qty}
+                              onChange={(v) => updateQty(item.id, Number(v))}
+                            />
+                          </Space>
+                          <Text strong>Line: {formatMoney(lineTotal)}</Text>
+                        </Space>
+                      }
+                    />
+                  </List.Item>
+                )
+              }}
+            />
+
+            <Divider />
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <Space>
+                <Button onClick={() => navigateTo('/products')}>Continue Shopping</Button>
+                <Button danger onClick={clearCart}>
+                  Clear Cart
+                </Button>
+              </Space>
+
+              <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+                <Text type="secondary">Subtotal</Text>
+                <Title level={4} style={{ margin: 0 }}>
+                  {formatMoney(subtotal)}
+                </Title>
+              </Space>
+            </div>
+          </Card>
+
+          <Card style={{ marginTop: 16 }}>
+            <Title level={4} style={{ marginTop: 0 }}>
+              Checkout (Sprint 1 Prototype)
+            </Title>
+            <Text type="secondary">
+              This sprint demonstrates cart functionality (add/update/remove) and totals.
+            </Text>
+            <div style={{ marginTop: 12 }}>
+              <Button type="primary" disabled>
+                Proceed to Checkout
+              </Button>
+            </div>
+          </Card>
+        </>
+      )}
+    </>
   )
 }
 
