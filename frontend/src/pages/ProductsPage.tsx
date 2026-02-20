@@ -20,6 +20,8 @@ function ProductsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
+  const [sortKey, setSortKey] = useState<'name' | 'price'>('name')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const endpoint = useMemo(() => `${API_BASE_URL}/products/`, [])
 
   useEffect(() => {
@@ -57,11 +59,26 @@ function ProductsPage() {
     return Array.from(map.entries())
   }, [products])
 
-  // Filter products by selected category
+  // Filter and sort products
   const filteredProducts = useMemo(() => {
-    if (selectedCategory === 'all') return products
-    return products.filter((p) => p.category === selectedCategory)
-  }, [products, selectedCategory])
+    let filtered = selectedCategory === 'all' ? products : products.filter((p) => p.category === selectedCategory)
+    let sorted = [...filtered]
+    sorted.sort((a, b) => {
+      if (sortKey === 'name') {
+        if (a.name < b.name) return sortOrder === 'asc' ? -1 : 1
+        if (a.name > b.name) return sortOrder === 'asc' ? 1 : -1
+        return 0
+      } else {
+        // price is string, convert to number
+        const priceA = Number(a.price)
+        const priceB = Number(b.price)
+        if (priceA < priceB) return sortOrder === 'asc' ? -1 : 1
+        if (priceA > priceB) return sortOrder === 'asc' ? 1 : -1
+        return 0
+      }
+    })
+    return sorted
+  }, [products, selectedCategory, sortKey, sortOrder])
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return ''
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
@@ -80,8 +97,8 @@ function ProductsPage() {
         <Paragraph type="secondary" style={{ marginBottom: 0 }}>
           Add products in the Django backend first to view them here.
         </Paragraph>
-        {/* Category Filter */}
-        <div style={{ marginTop: 16 }}>
+        {/* Category Filter & Sorting */}
+        <div style={{ marginTop: 16, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <Select
             style={{ minWidth: 200 }}
             value={selectedCategory}
@@ -94,6 +111,24 @@ function ProductsPage() {
                 {catName}
               </Select.Option>
             ))}
+          </Select>
+          <Select
+            style={{ minWidth: 160 }}
+            value={sortKey}
+            onChange={(value) => setSortKey(value)}
+            disabled={loading || products.length === 0}
+          >
+            <Select.Option value="name">Sort by Name</Select.Option>
+            <Select.Option value="price">Sort by Price</Select.Option>
+          </Select>
+          <Select
+            style={{ minWidth: 120 }}
+            value={sortOrder}
+            onChange={(value) => setSortOrder(value)}
+            disabled={loading || products.length === 0}
+          >
+            <Select.Option value="asc">Ascending</Select.Option>
+            <Select.Option value="desc">Descending</Select.Option>
           </Select>
         </div>
       </Card>
