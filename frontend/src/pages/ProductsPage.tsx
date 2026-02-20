@@ -149,7 +149,7 @@ function ProductsPage() {
             <List.Item key={product.id}>
               <Card
                 hoverable
-                style={{ borderRadius: 16, overflow: 'hidden' }}
+                style={{ borderRadius: 16, overflow: 'hidden', minHeight: 370, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
                 cover={
                   product.image ? (
                     <Image
@@ -170,7 +170,10 @@ function ProductsPage() {
                   title={product.name}
                   description={
                     <>
-                      <Paragraph ellipsis={{ rows: 3 }} style={{ marginBottom: 12 }}>
+                      <Paragraph
+                        ellipsis={{ rows: 2 }}
+                        style={{ marginBottom: 12, minHeight: 40, maxHeight: 40, overflow: 'hidden' }}
+                      >
                         {product.description}
                       </Paragraph>
                       <Text strong>${Number(product.price).toFixed(2)}</Text>
