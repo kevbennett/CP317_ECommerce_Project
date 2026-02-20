@@ -1,100 +1,158 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Divider, Empty, InputNumber, List, Space, Typography } from 'antd'
+import { Alert, Button, Card, Divider, Empty, InputNumber, List, Space, Typography, message } from 'antd'
 
-type CartItem = {
-  id: number
+type CartApiItem = {
+  id: number              
+  product_id: number
   name: string
-  price: number
+  price: string           
   qty: number
 }
 
-const CART_KEY = 'cart'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 
-function safeParseCart(raw: string | null): CartItem[] {
-  if (!raw) return []
-  try {
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    // Light validation so bad data doesn’t break the page
-    return parsed
-      .filter((x) => x && typeof x === 'object')
-      .map((x: any) => ({
-        id: Number(x.id),
-        name: String(x.name ?? ''),
-        price: Number(x.price),
-        qty: Number(x.qty),
-      }))
-      .filter((x) => Number.isFinite(x.id) && x.name.length > 0 && Number.isFinite(x.price) && Number.isFinite(x.qty))
-  } catch {
-    return []
-  }
-}
-
-function loadCart(): CartItem[] {
-  return safeParseCart(localStorage.getItem(CART_KEY))
-}
-
-function saveCart(cart: CartItem[]) {
-  localStorage.setItem(CART_KEY, JSON.stringify(cart))
-}
-
-function formatMoney(value: number): string {
-  // Avoid Intl to keep it simple/portable
-  return `$${value.toFixed(2)}`
+function toMoney(n: number) {
+  return `$${n.toFixed(2)}`
 }
 
 function CartPage() {
   const { Title, Text } = Typography
 
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [items, setItems] = useState<CartApiItem[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Load cart on first render
-  useEffect(() => {
-    try {
-      setCart(loadCart())
-    } catch {
-      setError('Could not load cart data.')
-      setCart([])
-    }
-  }, [])
+  const apiGetCart = async (): Promise<CartApiItem[]> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/cart/`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
 
-  // Keep localStorage in sync whenever cart changes
-  useEffect(() => {
-    try {
-      saveCart(cart)
-    } catch {
-      // If storage fails (rare), keep UI working
-      setError('Could not save cart changes (storage error).')
+    const contentType = res.headers.get('content-type') ?? ''
+    if (res.redirected || !contentType.includes('application/json')) {
+      throw new Error('Not logged in (or cart endpoint not returning JSON). Please log in and try again.')
     }
-  }, [cart])
+
+    if (!res.ok) {
+      throw new Error(`Failed to load cart (HTTP ${res.status})`)
+    }
+
+    return (await res.json()) as CartApiItem[]
+  }
+
+  const apiUpdateQty = async (cart_item_id: number, qty: number): Promise<void> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/update/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ cart_item_id, qty }),
+    })
+
+    const contentType = res.headers.get('content-type') ?? ''
+    if (res.redirected || !contentType.includes('application/json')) {
+      throw new Error('Not logged in (or update endpoint not returning JSON).')
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Failed to update item (HTTP ${res.status}). ${text}`)
+    }
+  }
+
+  const apiRemoveItem = async (cart_item_id: number): Promise<void> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/remove/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ cart_item_id }),
+    })
+
+    const contentType = res.headers.get('content-type') ?? ''
+    if (res.redirected || !contentType.includes('application/json')) {
+      throw new Error('Not logged in (or remove endpoint not returning JSON).')
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Failed to remove item (HTTP ${res.status}). ${text}`)
+    }
+  }
+
+  const refresh = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await apiGetCart()
+      setItems(data)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Failed to load cart'
+      setError(msg)
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refresh()
+  }, [])
 
   const subtotal = useMemo(() => {
     let sum = 0
-    for (const item of cart) {
-      sum += item.price * item.qty
+    for (const it of items) {
+      const priceNum = Number(it.price)
+      if (Number.isFinite(priceNum)) sum += priceNum * it.qty
     }
     return sum
-  }, [cart])
+  }, [items])
 
-  const itemCount = useMemo(() => {
-    let count = 0
-    for (const item of cart) count += item.qty
-    return count
-  }, [cart])
+  const totalQty = useMemo(() => items.reduce((acc, it) => acc + it.qty, 0), [items])
 
-  const updateQty = (id: number, nextQty: number) => {
-    // Clamp to [1, 99] to avoid weird values
-    const qty = Math.max(1, Math.min(99, Math.floor(nextQty || 1)))
-    setCart((prev) => prev.map((item) => (item.id === id ? { ...item, qty } : item)))
+  const updateQty = async (cartItemId: number, nextQty: number) => {
+    const qty = Math.max(1, Math.min(99, Math.floor(Number(nextQty) || 1)))
+
+    setItems((prev) => prev.map((it) => (it.id === cartItemId ? { ...it, qty } : it)))
+
+    try {
+      await apiUpdateQty(cartItemId, qty)
+      message.success('Quantity updated')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Update failed'
+      message.error(msg)
+      refresh()
+    }
   }
 
-  const removeItem = (id: number) => {
-    setCart((prev) => prev.filter((item) => item.id !== id))
+  const removeItem = async (cartItemId: number) => {
+    setItems((prev) => prev.filter((it) => it.id !== cartItemId))
+
+    try {
+      await apiRemoveItem(cartItemId)
+      message.success('Item removed')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Remove failed'
+      message.error(msg)
+      refresh()
+    }
   }
 
-  const clearCart = () => {
-    setCart([])
+  const clearCart = async () => {
+    if (items.length === 0) return
+
+    const snapshot = items
+    setItems([])
+
+    try {
+      for (const it of snapshot) {
+        await apiRemoveItem(it.id)
+      }
+      message.success('Cart cleared')
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Clear failed'
+      message.error(msg)
+      refresh()
+    }
   }
 
   const navigateTo = (path: string) => {
@@ -110,7 +168,7 @@ function CartPage() {
           Shopping Cart
         </Title>
         <Text type="secondary">
-          {itemCount} item{itemCount === 1 ? '' : 's'}
+          {totalQty} item{totalQty === 1 ? '' : 's'}
         </Text>
       </Card>
 
@@ -123,7 +181,11 @@ function CartPage() {
         />
       )}
 
-      {cart.length === 0 ? (
+      {loading ? (
+        <Card>
+          <Text type="secondary">Loading cart…</Text>
+        </Card>
+      ) : items.length === 0 ? (
         <Card>
           <Empty description="Your cart is empty." />
           <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center' }}>
@@ -133,81 +195,69 @@ function CartPage() {
           </div>
         </Card>
       ) : (
-        <>
-          <Card>
-            <List
-              dataSource={cart}
-              rowKey={(item) => String(item.id)}
-              renderItem={(item) => {
-                const lineTotal = item.price * item.qty
-                return (
-                  <List.Item
-                    actions={[
-                      <Button danger onClick={() => removeItem(item.id)} key="remove">
-                        Remove
-                      </Button>,
-                    ]}
-                  >
-                    <List.Item.Meta
-                      title={
-                        <Space direction="vertical" size={0}>
-                          <Text strong>{item.name}</Text>
-                          <Text type="secondary">{formatMoney(item.price)} each</Text>
+        <Card>
+          <List
+            dataSource={items}
+            rowKey={(it) => String(it.id)}
+            renderItem={(it) => {
+              const priceNum = Number(it.price)
+              const lineTotal = (Number.isFinite(priceNum) ? priceNum : 0) * it.qty
+              return (
+                <List.Item
+                  actions={[
+                    <Button danger onClick={() => removeItem(it.id)} key="remove">
+                      Remove
+                    </Button>,
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={
+                      <Space direction="vertical" size={0}>
+                        <Text strong>{it.name}</Text>
+                        <Text type="secondary">
+                          {Number.isFinite(priceNum) ? `${toMoney(priceNum)} each` : 'Price unavailable'}
+                        </Text>
+                      </Space>
+                    }
+                    description={
+                      <Space size="large" wrap>
+                        <Space>
+                          <Text>Qty:</Text>
+                          <InputNumber
+                            min={1}
+                            max={99}
+                            value={it.qty}
+                            onChange={(v) => updateQty(it.id, Number(v))}
+                          />
                         </Space>
-                      }
-                      description={
-                        <Space size="large" wrap>
-                          <Space>
-                            <Text>Qty:</Text>
-                            <InputNumber
-                              min={1}
-                              max={99}
-                              value={item.qty}
-                              onChange={(v) => updateQty(item.id, Number(v))}
-                            />
-                          </Space>
-                          <Text strong>Line: {formatMoney(lineTotal)}</Text>
-                        </Space>
-                      }
-                    />
-                  </List.Item>
-                )
-              }}
-            />
+                        <Text strong>Line: {toMoney(lineTotal)}</Text>
+                      </Space>
+                    }
+                  />
+                </List.Item>
+              )
+            }}
+          />
 
-            <Divider />
+          <Divider />
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              <Space>
-                <Button onClick={() => navigateTo('/products')}>Continue Shopping</Button>
-                <Button danger onClick={clearCart}>
-                  Clear Cart
-                </Button>
-              </Space>
-
-              <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
-                <Text type="secondary">Subtotal</Text>
-                <Title level={4} style={{ margin: 0 }}>
-                  {formatMoney(subtotal)}
-                </Title>
-              </Space>
-            </div>
-          </Card>
-
-          <Card style={{ marginTop: 16 }}>
-            <Title level={4} style={{ marginTop: 0 }}>
-              Checkout (Sprint 1 Prototype)
-            </Title>
-            <Text type="secondary">
-              This sprint demonstrates cart functionality (add/update/remove) and totals.
-            </Text>
-            <div style={{ marginTop: 12 }}>
-              <Button type="primary" disabled>
-                Proceed to Checkout
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <Space>
+              <Button onClick={() => navigateTo('/products')}>Continue Shopping</Button>
+              <Button danger onClick={clearCart}>
+                Clear Cart
               </Button>
-            </div>
-          </Card>
-        </>
+              <Button onClick={refresh}>Refresh</Button>
+            </Space>
+
+            <Space direction="vertical" size={0} style={{ textAlign: 'right' }}>
+              <Text type="secondary">Subtotal</Text>
+              <Title level={4} style={{ margin: 0 }}>
+                {toMoney(subtotal)}
+              </Title>
+            </Space>
+          </div>
+        </Card>
       )}
     </>
   )
