@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Empty, Image, List, Spin, Tag, Typography } from 'antd'
+import { Alert, Card, Empty, Image, List, Spin, Tag, Typography, Select } from 'antd'
 
 type Product = {
   id: number
@@ -19,6 +19,7 @@ function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
   const endpoint = useMemo(() => `${API_BASE_URL}/products/`, [])
 
   useEffect(() => {
@@ -45,6 +46,22 @@ function ProductsPage() {
     loadProducts()
   }, [endpoint])
 
+  // Extract unique categories from products
+  const categories = useMemo(() => {
+    const map = new Map<number, string>()
+    products.forEach((p) => {
+      if (!map.has(p.category)) {
+        map.set(p.category, p.category_name ?? `Category #${p.category}`)
+      }
+    })
+    return Array.from(map.entries())
+  }, [products])
+
+  // Filter products by selected category
+  const filteredProducts = useMemo(() => {
+    if (selectedCategory === 'all') return products
+    return products.filter((p) => p.category === selectedCategory)
+  }, [products, selectedCategory])
   const getImageUrl = (imagePath: string) => {
     if (!imagePath) return ''
     if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
@@ -63,6 +80,22 @@ function ProductsPage() {
         <Paragraph type="secondary" style={{ marginBottom: 0 }}>
           Add products in the Django backend first to view them here.
         </Paragraph>
+        {/* Category Filter */}
+        <div style={{ marginTop: 16 }}>
+          <Select
+            style={{ minWidth: 200 }}
+            value={selectedCategory}
+            onChange={setSelectedCategory}
+            disabled={loading || products.length === 0}
+          >
+            <Select.Option value="all">All Categories</Select.Option>
+            {categories.map(([catId, catName]) => (
+              <Select.Option key={catId} value={catId}>
+                {catName}
+              </Select.Option>
+            ))}
+          </Select>
+        </div>
       </Card>
 
       {loading && (
@@ -71,27 +104,28 @@ function ProductsPage() {
         </Card>
       )}
       {error && <Alert type="error" message={`Could not load products: ${error}`} showIcon />}
-      {!loading && !error && products.length === 0 && <Empty description="No products found." />}
+      {!loading && !error && filteredProducts.length === 0 && <Empty description="No products found." />}
 
-      {!loading && !error && products.length > 0 && (
+      {!loading && !error && filteredProducts.length > 0 && (
         <List
           grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 4 }}
-          dataSource={products}
+          dataSource={filteredProducts}
           renderItem={(product) => (
             <List.Item key={product.id}>
               <Card
                 hoverable
+                style={{ borderRadius: 16, overflow: 'hidden' }}
                 cover={
                   product.image ? (
                     <Image
                       src={getImageUrl(product.image)}
                       alt={product.name}
                       height={180}
-                      style={{ objectFit: 'cover' }}
+                      style={{ objectFit: 'cover', borderTopLeftRadius: 16, borderTopRightRadius: 16 }}
                       preview={false}
                     />
                   ) : (
-                    <div style={{ height: 180, display: 'grid', placeItems: 'center' }}>
+                    <div style={{ height: 180, display: 'grid', placeItems: 'center', borderTopLeftRadius: 16, borderTopRightRadius: 16, background: '#fafafa' }}>
                       <Text type="secondary">No image</Text>
                     </div>
                   )
