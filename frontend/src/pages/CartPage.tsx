@@ -10,6 +10,16 @@ type CartApiItem = {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const TOKEN_STORAGE_KEY = 'authToken'
+
+function getAuthHeaders() {
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers.Authorization = `Token ${token}`
+  }
+  return headers
+}
 
 function toMoney(n: number) {
   return `$${n.toFixed(2)}`
@@ -26,7 +36,7 @@ function CartPage() {
     const res = await fetch(`${API_BASE_URL}/shoppingCart/cart/`, {
       method: 'GET',
       credentials: 'include',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...getAuthHeaders() },
     })
 
     const contentType = res.headers.get('content-type') ?? ''
@@ -45,7 +55,7 @@ function CartPage() {
     const res = await fetch(`${API_BASE_URL}/shoppingCart/update/`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ cart_item_id, qty }),
     })
 
@@ -64,7 +74,7 @@ function CartPage() {
     const res = await fetch(`${API_BASE_URL}/shoppingCart/remove/`, {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getAuthHeaders() },
       body: JSON.stringify({ cart_item_id }),
     })
 

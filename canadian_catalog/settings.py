@@ -34,6 +34,7 @@ ALLOWED_HOSTS = []
 INSTALLED_APPS = [
     'products.apps.ProductsConfig',
     'users.apps.UsersConfig',
+    'shoppingCart.apps.ShoppingCartConfig',
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
