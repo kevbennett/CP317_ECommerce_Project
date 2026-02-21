@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Alert, Button, Card, Empty, Image, List, Select, Spin, Tag, Typography, message } from 'antd'
 
 type Product = {
@@ -17,6 +18,7 @@ const TOKEN_STORAGE_KEY = 'authToken'
 
 function ProductsPage() {
   const { Title, Paragraph, Text } = Typography
+  const navigate = useNavigate()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -192,6 +194,7 @@ function ProductsPage() {
             <List.Item key={product.id}>
               <Card
                 hoverable
+                onClick={() => navigate(`/products/${product.id}`)}
                 style={{ borderRadius: 16, overflow: 'hidden', minHeight: 370, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
                 cover={
                   product.image ? (
@@ -227,7 +230,10 @@ function ProductsPage() {
                         type="primary"
                         style={{ marginTop: 12 }}
                         loading={addingProductId === product.id}
-                        onClick={() => addToCart(product.id)}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void addToCart(product.id)
+                        }}
                       >
                         Add to Cart
                       </Button>
