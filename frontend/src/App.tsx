@@ -1,21 +1,28 @@
 import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
-import { Layout, Menu, Button, Typography } from 'antd'
+import { Layout, Menu, Button, Typography, Space } from 'antd'
 import HomePage from './pages/HomePage'
 import ProductsPage from './pages/ProductsPage'
 import CartPage from './pages/CartPage'
 import ProductDetailsPage from './pages/ProductDetailsPage'
+import LoginPage from './pages/LoginPage'
+import SignupPage from './pages/SignupPage'
+import ProfilePage from './pages/ProfilePage'
+import { useAuth } from './auth/AuthContext'
+import ProtectedRoute from './auth/ProtectedRoute'
 
 function App() {
   const { Header, Content, Footer } = Layout
   const { Text } = Typography
   const navigate = useNavigate()
   const location = useLocation()
+  const { isAuthenticated, user, logout } = useAuth()
 
-  // keep menu selection correct on /products/:id
   const selectedKey = location.pathname.startsWith('/products')
     ? '/products'
     : location.pathname.startsWith('/cart')
     ? '/cart'
+    : location.pathname.startsWith('/profile')
+    ? '/profile'
     : '/'
 
   return (
@@ -39,22 +46,45 @@ function App() {
           </Text>
         </Button>
 
-        <Menu
-          mode="horizontal"
-          selectedKeys={[selectedKey]}
-          onClick={({ key }) => navigate(key)}
-          items={[
-            { key: '/', label: 'Home' },
-            { key: '/products', label: 'Products' },
-            { key: '/cart', label: 'Cart' },
-          ]}
-          style={{
-            minWidth: 320,
-            display: 'flex',
-            justifyContent: 'flex-end',
-            borderBottom: 'none',
-          }}
-        />
+        <Space size={12}>
+          <Menu
+            mode="horizontal"
+            selectedKeys={[selectedKey]}
+            onClick={({ key }) => navigate(key)}
+            items={[
+              { key: '/', label: 'Home' },
+              { key: '/products', label: 'Products' },
+              { key: '/cart', label: 'Cart' },
+              ...(isAuthenticated ? [{ key: '/profile', label: 'Profile' }] : []),
+            ]}
+            style={{
+              minWidth: 320,
+              display: 'flex',
+              justifyContent: 'flex-end',
+              borderBottom: 'none',
+            }}
+          />
+          {isAuthenticated ? (
+            <Space>
+              <Text type="secondary">Hi, {user?.username}</Text>
+              <Button
+                onClick={async () => {
+                  await logout()
+                  navigate('/login')
+                }}
+              >
+                Logout
+              </Button>
+            </Space>
+          ) : (
+            <Space>
+              <Button onClick={() => navigate('/login')}>Login</Button>
+              <Button type="primary" onClick={() => navigate('/signup')}>
+                Sign up
+              </Button>
+            </Space>
+          )}
+        </Space>
       </Header>
 
       <Content
@@ -69,13 +99,28 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/products" element={<ProductsPage />} />
           <Route path="/products/:id" element={<ProductDetailsPage />} />
-          <Route path="/cart" element={<CartPage />} />
+          <Route
+            path="/cart"
+            element={
+              <ProtectedRoute>
+                <CartPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </Content>
 
-      <Footer style={{ textAlign: 'center', background: '#fff' }}>
-        Canadian Catalog ©2026
-      </Footer>
+      <Footer style={{ textAlign: 'center', background: '#fff' }}>Canadian Catalog ©2026</Footer>
     </Layout>
   )
 }
