@@ -58,6 +58,7 @@ function ProductsPage() {
       }
 
       message.success('Added to cart')
+      window.dispatchEvent(new Event('cart-updated'))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to add item to cart'
       message.error(msg)

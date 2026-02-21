@@ -127,6 +127,7 @@ function CartPage() {
     try {
       await apiUpdateQty(cartItemId, qty)
       message.success('Quantity updated')
+      window.dispatchEvent(new Event('cart-updated'))
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Update failed'
       message.error(msg)
@@ -140,6 +141,7 @@ function CartPage() {
     try {
       await apiRemoveItem(cartItemId)
       message.success('Item removed')
+      window.dispatchEvent(new Event('cart-updated'))
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Remove failed'
       message.error(msg)
@@ -158,6 +160,7 @@ function CartPage() {
         await apiRemoveItem(it.id)
       }
       message.success('Cart cleared')
+      window.dispatchEvent(new Event('cart-updated'))
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Clear failed'
       message.error(msg)
