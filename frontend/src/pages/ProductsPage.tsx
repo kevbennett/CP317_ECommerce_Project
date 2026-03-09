@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Card, Empty, Image, List, Spin, Tag, Typography, Select } from 'antd'
+import { useNavigate } from 'react-router-dom'
+import { Alert, Button, Card, Empty, Image, List, Select, Spin, Tag, Typography, message } from 'antd'
 
 type Product = {
   id: number
@@ -13,16 +14,60 @@ type Product = {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
 const MEDIA_BASE_URL = import.meta.env.VITE_MEDIA_BASE_URL ?? 'http://127.0.0.1:8000'
+const TOKEN_STORAGE_KEY = 'authToken'
 
 function ProductsPage() {
   const { Title, Paragraph, Text } = Typography
+  const navigate = useNavigate()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all')
   const [sortKey, setSortKey] = useState<'name' | 'price'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [addingProductId, setAddingProductId] = useState<number | null>(null)
   const endpoint = useMemo(() => `${API_BASE_URL}/products/`, [])
+
+  const addToCart = async (productId: number) => {
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+    if (!token) {
+      message.error('Please log in to add items to your cart.')
+      return
+    }
+
+    try {
+      setAddingProductId(productId)
+      const response = await fetch(`${API_BASE_URL}/shoppingCart/add/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Token ${token}`,
+        },
+        body: JSON.stringify({ product_id: productId, qty: 1 }),
+      })
+
+      if (!response.ok) {
+        let err = `Request failed with status ${response.status}`
+        try {
+          const data = await response.json()
+          if (typeof data?.error === 'string') err = data.error
+          if (typeof data?.detail === 'string') err = data.detail
+        } catch {
+          // no-op
+        }
+        throw new Error(err)
+      }
+
+      message.success('Added to cart')
+      window.dispatchEvent(new Event('cart-updated'))
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add item to cart'
+      message.error(msg)
+    } finally {
+      setAddingProductId(null)
+    }
+  }
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -149,6 +194,7 @@ function ProductsPage() {
             <List.Item key={product.id}>
               <Card
                 hoverable
+                onClick={() => navigate(`/products/${product.id}`)}
                 style={{ borderRadius: 16, overflow: 'hidden', minHeight: 370, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
                 cover={
                   product.image ? (
@@ -180,6 +226,17 @@ function ProductsPage() {
                       <div style={{ marginTop: 8 }}>
                         <Tag>{product.category_name ?? `Category #${product.category}`}</Tag>
                       </div>
+                      <Button
+                        type="primary"
+                        style={{ marginTop: 12 }}
+                        loading={addingProductId === product.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void addToCart(product.id)
+                        }}
+                      >
+                        Add to Cart
+                      </Button>
                     </>
                   }
                 />
