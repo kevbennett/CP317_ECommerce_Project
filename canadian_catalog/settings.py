@@ -37,7 +37,9 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'rest_framework.authtoken',
-    
+    'shoppingCart.apps.ShoppingCartConfig',
+    'orders.apps.OrdersConfig',
+
     #Default Django apps
     'django.contrib.admin',
     'django.contrib.auth',
@@ -140,3 +142,9 @@ REST_FRAMEWORK = {
         'rest_framework.authentication.TokenAuthentication',
     ],
 }
+
+# Stripe
+STRIPE_PUBLIC_KEY = os.environ.get('STRIPE_PUBLIC_KEY')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
+STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
+STRIPE_CURRENCY = 'cad'
