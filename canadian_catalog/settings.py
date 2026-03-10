@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'shoppingCart.apps.ShoppingCartConfig',
     'products.apps.ProductsConfig',
     'rest_framework',
+    'wishlist',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
