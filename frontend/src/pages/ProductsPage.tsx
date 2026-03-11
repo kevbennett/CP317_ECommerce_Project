@@ -26,6 +26,7 @@ function ProductsPage() {
   const [sortKey, setSortKey] = useState<'name' | 'price'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
+  const [addingWishlistId, setAddingWishlistId] = useState<number | null>(null)
   const endpoint = useMemo(() => `${API_BASE_URL}/products/`, [])
 
   const addToCart = async (productId: number) => {
@@ -66,6 +67,46 @@ function ProductsPage() {
       message.error(msg)
     } finally {
       setAddingProductId(null)
+    }
+  }
+
+  const addToWishlist = async (productId: number) => {
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+    if (!token) {
+      message.error('Please log in to add items to your wishlist.')
+      return
+    }
+
+    try {
+      setAddingWishlistId(productId)
+      const response = await fetch(`${API_BASE_URL}/wishlist/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Token ${token}`,
+        },
+        body: JSON.stringify({ product: productId }),
+      })
+
+      if (!response.ok) {
+        let err = `Request failed with status ${response.status}`
+        try {
+          const data = await response.json()
+          if (typeof data?.error === 'string') err = data.error
+          if (typeof data?.detail === 'string') err = data.detail
+        } catch {
+          // no-op
+        }
+        throw new Error(err)
+      }
+
+      message.success('Added to wishlist')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add item to wishlist'
+      message.error(msg)
+    } finally {
+      setAddingWishlistId(null)
     }
   }
 
@@ -236,6 +277,16 @@ function ProductsPage() {
                         }}
                       >
                         Add to Cart
+                      </Button>
+                      <Button
+                        style={{ marginTop: 8 }}
+                        loading={addingWishlistId === product.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void addToWishlist(product.id)
+                        }}
+                      >
+                        Add to Wishlist
                       </Button>
                     </>
                   }

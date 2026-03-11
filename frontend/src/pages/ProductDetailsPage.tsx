@@ -24,6 +24,7 @@ export default function ProductDetailsPage() {
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(false)
   const [addingToCart, setAddingToCart] = useState(false)
+  const [addingToWishlist, setAddingToWishlist] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -85,6 +86,47 @@ export default function ProductDetailsPage() {
     }
   }
 
+  const addToWishlist = async () => {
+    if (!product) return
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY)
+    if (!token) {
+      message.error('Please log in to add items to your wishlist.')
+      return
+    }
+
+    try {
+      setAddingToWishlist(true)
+      const response = await fetch(`${API_BASE_URL}/wishlist/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          Authorization: `Token ${token}`,
+        },
+        body: JSON.stringify({ product: product.id }),
+      })
+
+      if (!response.ok) {
+        let err = `Request failed with status ${response.status}`
+        try {
+          const data = await response.json()
+          if (typeof data?.error === 'string') err = data.error
+          if (typeof data?.detail === 'string') err = data.detail
+        } catch {
+          // no-op
+        }
+        throw new Error(err)
+      }
+
+      message.success('Added to wishlist')
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to add item to wishlist'
+      message.error(msg)
+    } finally {
+      setAddingToWishlist(false)
+    }
+  }
+
   return (
     <div>
       <Button onClick={() => navigate('/products')} style={{ borderRadius: 12, marginBottom: 14 }}>
@@ -117,9 +159,14 @@ export default function ProductDetailsPage() {
 
         <Paragraph style={{ color: 'rgba(0,0,0,0.75)' }}>{product.description}</Paragraph>
 
-        <Button type="primary" style={{ borderRadius: 12, fontWeight: 900 }} loading={addingToCart} onClick={addToCart}>
-          Add to cart
-        </Button>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <Button type="primary" style={{ borderRadius: 12, fontWeight: 900 }} loading={addingToCart} onClick={addToCart}>
+            Add to cart
+          </Button>
+          <Button style={{ borderRadius: 12 }} loading={addingToWishlist} onClick={addToWishlist}>
+            Add to wishlist
+          </Button>
+        </div>
       </Card>
     </div>
   )

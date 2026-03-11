@@ -5,6 +5,7 @@ import HomePage from './pages/HomePage'
 import ProductsPage from './pages/ProductsPage'
 import CartPage from './pages/CartPage'
 import ProductDetailsPage from './pages/ProductDetailsPage'
+import WishlistPage from './pages/WishlistPage'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import ProfilePage from './pages/ProfilePage'
@@ -55,6 +56,8 @@ function App() {
     ? '/products'
     : location.pathname.startsWith('/cart')
     ? '/cart'
+    : location.pathname.startsWith('/wishlist')
+    ? '/wishlist'
     : location.pathname.startsWith('/profile')
     ? '/profile'
     : '/'
@@ -85,6 +88,7 @@ function App() {
           </Space>
         ),
       },
+      ...(isAuthenticated ? [{ key: '/wishlist', label: 'Wishlist' }] : []),
       ...(isAuthenticated ? [{ key: '/profile', label: 'Profile' }] : []),
     ],
     [cartCount, isAuthenticated]
@@ -164,6 +168,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <CartPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/wishlist"
+            element={
+              <ProtectedRoute>
+                <WishlistPage />
               </ProtectedRoute>
             }
           />
