@@ -177,6 +177,40 @@ function CartPage() {
     }
   }
 
+  const moveToWishlist = async (cartItemId: number, productId: number) => {
+    const snapshot = items
+    setItems((prev) => prev.filter((it) => it.id !== cartItemId))
+
+    try {
+      const addRes = await fetch(`${API_BASE_URL}/wishlist/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ product: productId }),
+      })
+
+      if (!addRes.ok) {
+        const text = await addRes.text().catch(() => '')
+        if (addRes.status === 400 && text.includes('already in your wishlist')) {
+          // Treat as success; item already exists.
+        } else {
+          throw new Error(`Failed to add to wishlist (HTTP ${addRes.status}). ${text}`)
+        }
+      }
+
+      await apiRemoveItem(cartItemId)
+      message.success('Moved to wishlist')
+      window.dispatchEvent(new Event('cart-updated'))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Move to wishlist failed'
+      message.error(msg)
+      setItems(snapshot)
+    }
+  }
+
   const clearCart = async () => {
     if (items.length === 0) return
 
@@ -193,6 +227,47 @@ function CartPage() {
       const msg = e instanceof Error ? e.message : 'Clear failed'
       message.error(msg)
       refresh()
+    }
+  }
+
+  const moveAllToWishlist = async () => {
+    if (items.length === 0) return
+
+    const snapshot = items
+    setItems([])
+
+    try {
+      for (const it of snapshot) {
+        const addRes = await fetch(`${API_BASE_URL}/wishlist/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...getAuthHeaders(),
+          },
+          body: JSON.stringify({ product: it.product }),
+        })
+
+        if (!addRes.ok) {
+          const text = await addRes.text().catch(() => '')
+          if (addRes.status === 400 && text.includes('already in your wishlist')) {
+            // Treat as success; item already exists.
+          } else {
+            throw new Error(`Failed to add to wishlist (HTTP ${addRes.status}). ${text}`)
+          }
+        }
+      }
+
+      for (const it of snapshot) {
+        await apiRemoveItem(it.id)
+      }
+
+      message.success('Moved all to wishlist')
+      window.dispatchEvent(new Event('cart-updated'))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Move all to wishlist failed'
+      message.error(msg)
+      setItems(snapshot)
     }
   }
 
@@ -246,6 +321,9 @@ function CartPage() {
               return (
                 <List.Item
                   actions={[
+                    <Button onClick={() => moveToWishlist(it.id, it.product)} key="wishlist">
+                      Move to Wishlist
+                    </Button>,
                     <Button danger onClick={() => removeItem(it.id)} key="remove">
                       Remove
                     </Button>,
@@ -285,6 +363,7 @@ function CartPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <Space>
               <Button onClick={() => navigateTo('/products')}>Continue Shopping</Button>
+              <Button onClick={moveAllToWishlist}>Move All to Wishlist</Button>
               <Button danger onClick={clearCart}>
                 Clear Cart
               </Button>

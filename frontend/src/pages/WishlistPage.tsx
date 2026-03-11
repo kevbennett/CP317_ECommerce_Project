@@ -113,6 +113,90 @@ export default function WishlistPage() {
     }
   }
 
+  const moveToCart = async (wishlistId: number, productId: number) => {
+    const snapshot = items
+    setItems((prev) => prev.filter((it) => it.id !== wishlistId))
+
+    try {
+      const addRes = await fetch(`${API_BASE_URL}/shoppingCart/add/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...getAuthHeaders(),
+        },
+        body: JSON.stringify({ product_id: productId, quantity: 1 }),
+      })
+
+      if (!addRes.ok) {
+        const text = await addRes.text().catch(() => '')
+        throw new Error(`Failed to add to cart (HTTP ${addRes.status}). ${text}`)
+      }
+
+      const removeRes = await fetch(`${API_BASE_URL}/wishlist/${wishlistId}/`, {
+        method: 'DELETE',
+        headers: { Accept: 'application/json', ...getAuthHeaders() },
+      })
+
+      if (!removeRes.ok) {
+        const text = await removeRes.text().catch(() => '')
+        throw new Error(`Added to cart, but failed to remove from wishlist (HTTP ${removeRes.status}). ${text}`)
+      }
+
+      message.success('Moved to cart')
+      window.dispatchEvent(new Event('cart-updated'))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Move to cart failed'
+      message.error(msg)
+      setItems(snapshot)
+    }
+  }
+
+  const moveAllToCart = async () => {
+    if (items.length === 0) return
+
+    const snapshot = items
+    setItems([])
+
+    try {
+      for (const it of snapshot) {
+        const addRes = await fetch(`${API_BASE_URL}/shoppingCart/add/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            ...getAuthHeaders(),
+          },
+          body: JSON.stringify({ product_id: it.product, quantity: 1 }),
+        })
+
+        if (!addRes.ok) {
+          const text = await addRes.text().catch(() => '')
+          throw new Error(`Failed to add item to cart (HTTP ${addRes.status}). ${text}`)
+        }
+      }
+
+      for (const it of snapshot) {
+        const removeRes = await fetch(`${API_BASE_URL}/wishlist/${it.id}/`, {
+          method: 'DELETE',
+          headers: { Accept: 'application/json', ...getAuthHeaders() },
+        })
+
+        if (!removeRes.ok) {
+          const text = await removeRes.text().catch(() => '')
+          throw new Error(`Added to cart, but failed to remove wishlist item (HTTP ${removeRes.status}). ${text}`)
+        }
+      }
+
+      message.success('Moved all to cart')
+      window.dispatchEvent(new Event('cart-updated'))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Move all to cart failed'
+      message.error(msg)
+      setItems(snapshot)
+    }
+  }
+
   const navigateTo = (path: string) => {
     window.history.pushState({}, '', path)
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -154,6 +238,11 @@ export default function WishlistPage() {
         </Card>
       ) : (
         <Card>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <Button type="primary" onClick={moveAllToCart}>
+              Move All to Cart
+            </Button>
+          </div>
           <List
             dataSource={items}
             rowKey={(it) => String(it.id)}
@@ -162,6 +251,13 @@ export default function WishlistPage() {
               return (
                 <List.Item
                   actions={[
+                    <Button
+                      type="primary"
+                      onClick={() => moveToCart(it.id, it.product)}
+                      key="move"
+                    >
+                      Move to Cart
+                    </Button>,
                     <Button danger onClick={() => removeItem(it.id)} key="remove">
                       Remove
                     </Button>,

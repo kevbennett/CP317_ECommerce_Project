@@ -98,6 +98,10 @@ function ProductsPage() {
         } catch {
           // no-op
         }
+        if (response.status === 400 && err.includes('already in your wishlist')) {
+          message.info('Already in wishlist')
+          return
+        }
         throw new Error(err)
       }
 
