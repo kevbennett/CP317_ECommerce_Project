@@ -20,21 +20,14 @@ from django.conf.urls.static import static
 from django.conf import settings
 
 urlpatterns = [
-<<<<<<< HEAD
-    path('shoppingCart/',include('shoppingCart.urls')),
-    path("products/", include('products.urls')),
-    path('admin/', admin.site.urls),
-    path('api/', include('wishlist.urls')),
-    path('wishlist/', include('wishlist.urls')),
-
-=======
     path("products/", include("products.urls")),
-    path('users/', include('users.urls')),
-    path('shoppingCart/', include('shoppingCart.urls')),
-    path('admin/', admin.site.urls),
-    path('cart/', include('shoppingCart.urls')),
+    path("users/", include("users.urls")),
+    path("shoppingCart/", include("shoppingCart.urls")),
+    path("cart/", include("shoppingCart.urls")),
     path("orders/", include("orders.urls")),
->>>>>>> 0405a7c38b8aff73055f10802e461513e96d9769
+    path("api/", include("wishlist.urls")),
+    path("wishlist/", include("wishlist.urls")),
+    path("admin/", admin.site.urls),
 ]
 
 if settings.DEBUG:

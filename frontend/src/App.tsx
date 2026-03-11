@@ -30,7 +30,7 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/shoppingCart/cart/`, {
+      const response = await fetch(`${API_BASE_URL}/shoppingCart/`, {
         method: 'GET',
         headers: {
           Accept: 'application/json',
@@ -43,8 +43,9 @@ function App() {
         return
       }
 
-      const items = (await response.json()) as Array<{ qty: number }>
-      setCartCount(items.reduce((sum, item) => sum + Number(item.qty || 0), 0))
+      const data = (await response.json()) as { items?: Array<{ quantity: number }> }
+      const items = data.items ?? []
+      setCartCount(items.reduce((sum, item) => sum + Number(item.quantity || 0), 0))
     } catch {
       setCartCount(0)
     }

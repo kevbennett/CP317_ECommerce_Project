@@ -44,7 +44,7 @@ function ProductsPage() {
           Accept: 'application/json',
           Authorization: `Token ${token}`,
         },
-        body: JSON.stringify({ product_id: productId, qty: 1 }),
+        body: JSON.stringify({ product_id: productId, quantity: 1 }),
       })
 
       if (!response.ok) {

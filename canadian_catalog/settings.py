@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
 
-    'wishlist'
+    'wishlist',
     'rest_framework.authtoken',
     'orders.apps.OrdersConfig',
 

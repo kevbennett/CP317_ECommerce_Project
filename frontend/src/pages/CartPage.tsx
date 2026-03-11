@@ -2,11 +2,17 @@ import { useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Card, Divider, Empty, InputNumber, List, Space, Typography, message } from 'antd'
 
 type CartApiItem = {
-  id: number              
-  product_id: number
-  name: string
-  price: string           
-  qty: number
+  id: number
+  product: number
+  product_name: string
+  product_price: string
+  quantity: number
+  subtotal: string
+}
+
+type CartApiResponse = {
+  items: CartApiItem[]
+  total: string | number
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
@@ -32,8 +38,8 @@ function CartPage() {
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
 
-  const apiGetCart = async (): Promise<CartApiItem[]> => {
-    const res = await fetch(`${API_BASE_URL}/shoppingCart/cart/`, {
+  const apiGetCart = async (): Promise<CartApiResponse> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/`, {
       method: 'GET',
       credentials: 'include',
       headers: { Accept: 'application/json', ...getAuthHeaders() },
@@ -48,40 +54,53 @@ function CartPage() {
       throw new Error(`Failed to load cart (HTTP ${res.status})`)
     }
 
-    return (await res.json()) as CartApiItem[]
+    return (await res.json()) as CartApiResponse
   }
 
-  const apiUpdateQty = async (cart_item_id: number, qty: number): Promise<void> => {
-    const res = await fetch(`${API_BASE_URL}/shoppingCart/update/`, {
+  const apiAddQuantity = async (product_id: number, quantity: number): Promise<void> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/add/`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ cart_item_id, qty }),
+      body: JSON.stringify({ product_id, quantity }),
     })
 
     const contentType = res.headers.get('content-type') ?? ''
     if (res.redirected || !contentType.includes('application/json')) {
-      throw new Error('Not logged in (or update endpoint not returning JSON).')
+      throw new Error('Not logged in (or add endpoint not returning JSON).')
     }
 
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      throw new Error(`Failed to update item (HTTP ${res.status}). ${text}`)
+      throw new Error(`Failed to add item (HTTP ${res.status}). ${text}`)
     }
   }
 
-  const apiRemoveItem = async (cart_item_id: number): Promise<void> => {
-    const res = await fetch(`${API_BASE_URL}/shoppingCart/remove/`, {
+  const apiDecrementQuantity = async (cart_item_id: number, quantity: number): Promise<void> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/remove/${cart_item_id}/`, {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ cart_item_id }),
+      body: JSON.stringify({ quantity }),
     })
 
     const contentType = res.headers.get('content-type') ?? ''
     if (res.redirected || !contentType.includes('application/json')) {
-      throw new Error('Not logged in (or remove endpoint not returning JSON).')
+      throw new Error('Not logged in (or decrement endpoint not returning JSON).')
     }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Failed to decrement item (HTTP ${res.status}). ${text}`)
+    }
+  }
+
+  const apiRemoveItem = async (cart_item_id: number): Promise<void> => {
+    const res = await fetch(`${API_BASE_URL}/shoppingCart/remove/${cart_item_id}/`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { Accept: 'application/json', ...getAuthHeaders() },
+    })
 
     if (!res.ok) {
       const text = await res.text().catch(() => '')
@@ -94,7 +113,7 @@ function CartPage() {
       setLoading(true)
       setError(null)
       const data = await apiGetCart()
-      setItems(data)
+      setItems(data.items ?? [])
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load cart'
       setError(msg)
@@ -111,21 +130,30 @@ function CartPage() {
   const subtotal = useMemo(() => {
     let sum = 0
     for (const it of items) {
-      const priceNum = Number(it.price)
-      if (Number.isFinite(priceNum)) sum += priceNum * it.qty
+      const priceNum = Number(it.product_price)
+      if (Number.isFinite(priceNum)) sum += priceNum * it.quantity
     }
     return sum
   }, [items])
 
-  const totalQty = useMemo(() => items.reduce((acc, it) => acc + it.qty, 0), [items])
+  const totalQty = useMemo(() => items.reduce((acc, it) => acc + it.quantity, 0), [items])
 
   const updateQty = async (cartItemId: number, nextQty: number) => {
     const qty = Math.max(1, Math.min(99, Math.floor(Number(nextQty) || 1)))
 
-    setItems((prev) => prev.map((it) => (it.id === cartItemId ? { ...it, qty } : it)))
+    const currentItem = items.find((it) => it.id === cartItemId)
+    const currentQty = currentItem?.quantity ?? 1
+
+    if (!currentItem || currentQty === qty) return
+
+    setItems((prev) => prev.map((it) => (it.id === cartItemId ? { ...it, quantity: qty } : it)))
 
     try {
-      await apiUpdateQty(cartItemId, qty)
+      if (qty > currentQty) {
+        await apiAddQuantity(currentItem.product, qty - currentQty)
+      } else {
+        await apiDecrementQuantity(cartItemId, currentQty - qty)
+      }
       message.success('Quantity updated')
       window.dispatchEvent(new Event('cart-updated'))
     } catch (e) {
@@ -213,8 +241,8 @@ function CartPage() {
             dataSource={items}
             rowKey={(it) => String(it.id)}
             renderItem={(it) => {
-              const priceNum = Number(it.price)
-              const lineTotal = (Number.isFinite(priceNum) ? priceNum : 0) * it.qty
+              const priceNum = Number(it.product_price)
+              const lineTotal = (Number.isFinite(priceNum) ? priceNum : 0) * it.quantity
               return (
                 <List.Item
                   actions={[
@@ -226,7 +254,7 @@ function CartPage() {
                   <List.Item.Meta
                     title={
                       <Space direction="vertical" size={0}>
-                        <Text strong>{it.name}</Text>
+                        <Text strong>{it.product_name}</Text>
                         <Text type="secondary">
                           {Number.isFinite(priceNum) ? `${toMoney(priceNum)} each` : 'Price unavailable'}
                         </Text>
@@ -239,7 +267,7 @@ function CartPage() {
                           <InputNumber
                             min={1}
                             max={99}
-                            value={it.qty}
+                            value={it.quantity}
                             onChange={(v) => updateQty(it.id, Number(v))}
                           />
                         </Space>
