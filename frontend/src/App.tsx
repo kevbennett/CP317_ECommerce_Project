@@ -9,6 +9,8 @@ import WishlistPage from './pages/WishlistPage'
 import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import ProfilePage from './pages/ProfilePage'
+import OrdersPage from './pages/OrdersPage'
+import OrderDetailsPage from './pages/OrderDetailsPage'
 import { useAuth } from './auth/AuthContext'
 import ProtectedRoute from './auth/ProtectedRoute'
 
@@ -58,6 +60,8 @@ function App() {
     ? '/cart'
     : location.pathname.startsWith('/wishlist')
     ? '/wishlist'
+    : location.pathname.startsWith('/orders')
+    ? '/orders'
     : location.pathname.startsWith('/profile')
     ? '/profile'
     : '/'
@@ -89,6 +93,7 @@ function App() {
         ),
       },
       ...(isAuthenticated ? [{ key: '/wishlist', label: 'Wishlist' }] : []),
+      ...(isAuthenticated ? [{ key: '/orders', label: 'Orders' }] : []),
       ...(isAuthenticated ? [{ key: '/profile', label: 'Profile' }] : []),
     ],
     [cartCount, isAuthenticated]
@@ -181,6 +186,22 @@ function App() {
           />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <OrdersPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders/:id"
+            element={
+              <ProtectedRoute>
+                <OrderDetailsPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/profile"
             element={

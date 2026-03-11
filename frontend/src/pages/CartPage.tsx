@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Alert, Button, Card, Divider, Empty, InputNumber, List, Space, Typography, message } from 'antd'
+import { Alert, Button, Card, Divider, Empty, Form, Input, InputNumber, List, Modal, Space, Typography, message } from 'antd'
 
 type CartApiItem = {
   id: number
@@ -13,6 +13,30 @@ type CartApiItem = {
 type CartApiResponse = {
   items: CartApiItem[]
   total: string | number
+}
+
+type CheckoutOrderItem = {
+  id: number
+  product_id: number
+  product_name: string
+  quantity: number
+  unit_price: number
+  subtotal: number
+}
+
+type CheckoutOrder = {
+  id: number
+  email: string
+  status: string
+  stripe_client_secret: string
+  shipping_address: string
+  shipping_city: string
+  shipping_province: string
+  shipping_postal: string
+  shipping_country: string
+  total_price: number
+  items: CheckoutOrderItem[]
+  created_at: string
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api'
@@ -37,6 +61,9 @@ function CartPage() {
   const [items, setItems] = useState<CartApiItem[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false)
+  const [checkoutOpen, setCheckoutOpen] = useState<boolean>(false)
+  const [checkoutForm] = Form.useForm()
 
   const apiGetCart = async (): Promise<CartApiResponse> => {
     const res = await fetch(`${API_BASE_URL}/shoppingCart/`, {
@@ -106,6 +133,31 @@ function CartPage() {
       const text = await res.text().catch(() => '')
       throw new Error(`Failed to remove item (HTTP ${res.status}). ${text}`)
     }
+  }
+
+  const apiCheckout = async (payload: Record<string, unknown>): Promise<CheckoutOrder> => {
+    const res = await fetch(`${API_BASE_URL}/orders/checkout/`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(payload),
+    })
+
+    const contentType = res.headers.get('content-type') ?? ''
+    if (res.redirected || !contentType.includes('application/json')) {
+      throw new Error('Not logged in (or checkout endpoint not returning JSON).')
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`Checkout failed (HTTP ${res.status}). ${text}`)
+    }
+
+    return (await res.json()) as CheckoutOrder
   }
 
   const refresh = async () => {
@@ -271,6 +323,26 @@ function CartPage() {
     }
   }
 
+  const handleCheckout = async () => {
+    if (items.length === 0) return
+
+    try {
+      setCheckoutLoading(true)
+      const values = await checkoutForm.validateFields()
+      const order = await apiCheckout(values)
+      message.success('Order created. Complete payment to finalize.')
+      window.history.pushState({}, '', `/orders/${order.id}`)
+      window.dispatchEvent(new PopStateEvent('popstate'))
+      setCheckoutOpen(false)
+      checkoutForm.resetFields()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Checkout failed'
+      message.error(msg)
+    } finally {
+      setCheckoutLoading(false)
+    }
+  }
+
   const navigateTo = (path: string) => {
     window.history.pushState({}, '', path)
     window.dispatchEvent(new PopStateEvent('popstate'))
@@ -375,10 +447,76 @@ function CartPage() {
               <Title level={4} style={{ margin: 0 }}>
                 {toMoney(subtotal)}
               </Title>
+              <Button
+                type="primary"
+                style={{ marginTop: 8 }}
+                disabled={items.length === 0}
+                loading={checkoutLoading}
+                onClick={() => setCheckoutOpen(true)}
+              >
+                Checkout
+              </Button>
             </Space>
           </div>
         </Card>
       )}
+
+      <Modal
+        open={checkoutOpen}
+        title="Mock Payment"
+        okText="Place Order"
+        onCancel={() => setCheckoutOpen(false)}
+        onOk={handleCheckout}
+        confirmLoading={checkoutLoading}
+        destroyOnClose
+      >
+        <Text type="secondary">
+          This is a mock checkout. Card details are validated locally and by the backend, but no real payment is taken.
+        </Text>
+        <Form form={checkoutForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            label="Card Number"
+            name="card_number"
+            rules={[
+              { required: true, message: 'Card number is required.' },
+              {
+                validator: (_, value) => {
+                  const digits = String(value ?? '').replace(/\D/g, '')
+                  if (digits.length < 12) {
+                    return Promise.reject(new Error('Card number looks too short.'))
+                  }
+                  return Promise.resolve()
+                },
+              },
+            ]}
+          >
+            <Input placeholder="4242 4242 4242 4242" maxLength={23} />
+          </Form.Item>
+          <Space size="large">
+            <Form.Item
+              label="Exp. Month"
+              name="exp_month"
+              rules={[{ required: true, message: 'Exp. month required.' }]}
+            >
+              <Input placeholder="MM" maxLength={2} />
+            </Form.Item>
+            <Form.Item
+              label="Exp. Year"
+              name="exp_year"
+              rules={[{ required: true, message: 'Exp. year required.' }]}
+            >
+              <Input placeholder="YYYY" maxLength={4} />
+            </Form.Item>
+            <Form.Item
+              label="CVC"
+              name="cvc"
+              rules={[{ required: true, message: 'CVC required.' }]}
+            >
+              <Input placeholder="CVC" maxLength={4} />
+            </Form.Item>
+          </Space>
+        </Form>
+      </Modal>
     </>
   )
 }

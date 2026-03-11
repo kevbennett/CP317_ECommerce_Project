@@ -1,4 +1,3 @@
-import stripe
 from django.conf import settings
 from django.db import models
 from django.http import HttpResponse
@@ -14,7 +13,57 @@ from shoppingCart.models import Cart
 from .models import Order, OrderItem
 from .serializers import OrderSerializer
 
-stripe.api_key = settings.STRIPE_SECRET_KEY
+try:
+    import stripe
+except Exception:
+    stripe = None
+
+if stripe and getattr(settings, "STRIPE_SECRET_KEY", None):
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+
+
+def _luhn_checksum(card_number: str) -> bool:
+    """Basic Luhn check for mock card validation."""
+    digits = [int(ch) for ch in card_number if ch.isdigit()]
+    if len(digits) < 12:
+        return False
+    checksum = 0
+    parity = len(digits) % 2
+    for idx, digit in enumerate(digits):
+        if idx % 2 == parity:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        checksum += digit
+    return checksum % 10 == 0
+
+
+def _validate_mock_card(payload):
+    number = str(payload.get("card_number", "")).replace(" ", "").replace("-", "")
+    exp_month = str(payload.get("exp_month", "")).strip()
+    exp_year = str(payload.get("exp_year", "")).strip()
+    cvc = str(payload.get("cvc", "")).strip()
+
+    if not number or not exp_month or not exp_year or not cvc:
+        return "Card number, expiry month/year, and CVC are required."
+
+    if not number.isdigit() or not _luhn_checksum(number):
+        return "Invalid card number."
+
+    if not exp_month.isdigit() or not exp_year.isdigit():
+        return "Invalid expiry date."
+
+    month = int(exp_month)
+    year = int(exp_year)
+    if month < 1 or month > 12:
+        return "Invalid expiry month."
+    if year < 2000 or year > 2100:
+        return "Invalid expiry year."
+
+    if not cvc.isdigit() or len(cvc) not in (3, 4):
+        return "Invalid CVC."
+
+    return None
 
 
 class CheckoutView(APIView):
@@ -81,23 +130,40 @@ class CheckoutView(APIView):
 
         order.calculate_total()
 
-        # Create Stripe PaymentIntent
-        try:
-            intent = stripe.PaymentIntent.create(
-                amount=order.total_price_cents,
-                currency=settings.STRIPE_CURRENCY,
-                metadata={'order_id': order.pk},
-            )
-        except stripe.error.StripeError as e:
-            order.delete()
-            return Response(
-                {'detail': f'Payment error: {e.user_message}'},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+        # Create Stripe PaymentIntent if configured; otherwise mock payment.
+        if stripe and getattr(settings, "STRIPE_SECRET_KEY", None):
+            try:
+                intent = stripe.PaymentIntent.create(
+                    amount=order.total_price_cents,
+                    currency=settings.STRIPE_CURRENCY,
+                    metadata={'order_id': order.pk},
+                )
+            except stripe.error.StripeError as e:
+                order.delete()
+                return Response(
+                    {'detail': f'Payment error: {e.user_message}'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
 
-        order.stripe_payment_intent_id = intent.id
-        order.stripe_client_secret = intent.client_secret
-        order.save(update_fields=['stripe_payment_intent_id', 'stripe_client_secret'])
+            order.stripe_payment_intent_id = intent.id
+            order.stripe_client_secret = intent.client_secret
+            order.save(update_fields=['stripe_payment_intent_id', 'stripe_client_secret'])
+        else:
+            error = _validate_mock_card(request.data or {})
+            if error:
+                order.delete()
+                return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
+
+            order.status = Order.Status.PAID
+            order.stripe_payment_intent_id = "mock_intent"
+            order.stripe_client_secret = ""
+            order.save(update_fields=['status', 'stripe_payment_intent_id', 'stripe_client_secret'])
+
+            for item in order.items.all():
+                Product.objects.filter(pk=item.product_id).update(
+                    stock=models.F('stock') - item.quantity
+                )
+            Cart.objects.filter(user=user).delete()
 
         return Response(OrderSerializer(order).data, status=status.HTTP_201_CREATED)
 
