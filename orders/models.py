@@ -69,3 +69,55 @@ class OrderItem(models.Model):
     @property
     def subtotal(self):
         return self.subtotal_cents / 100
+    
+
+class Return(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending",'Pending'
+        APPROVED = "approved","Approved"
+        REFUNDED = "refunded","Refunded"
+        FAILED = "failed","Failed"
+
+    order = models.ForeignKey(Order, on_delete=models.CASCADE,
+                              related_name="returns")
+    user = models.ForeignKey(User, on_delete=models.SET_NULL,
+                             null=True)
+    status = models.CharField(max_length=20,choices=Status.choices,
+                              default=Status.PENDING)
+    reason = models.TextField(blank=True)
+
+    stripe_refund_id = models.CharField(max_length=255,
+                                        blank=True)
+    refund_amount_cents = models.PositiveIntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+    
+    def __str__(self):
+        return f"Return #{self.pk} for Order #{self.order_id} ({self.status})"
+    
+    @property
+    def refund_amount(self):
+        return self.refund_amount_cents/100
+    
+
+class ReturnItem(models.Model):
+    return_request = models.ForeignKey(Return, on_delete=models.CASCADE,
+                                       related_name="items")
+    order_item = models.ForeignKey(OrderItem, on_delete=models.CASCADE,
+                                   related_name="return_items")
+    quantity = models.PositiveIntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.quantity} x {self.order_item.product_name} (Return #{self.return_request_id})"
+    
+    @property
+    def refund_amount_cents(self):
+        return self.order_item.unit_price_cents*self.quantity
+    
+    @property
+    def refund_amount(self):
+        return self.refund_amount_cents/100

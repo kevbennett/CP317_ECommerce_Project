@@ -10,8 +10,8 @@ from rest_framework.views import APIView
 
 from products.models import Product
 from shoppingCart.models import Cart
-from .models import Order, OrderItem
-from .serializers import OrderSerializer
+from .models import Order, OrderItem, Return, ReturnItem
+from .serializers import OrderSerializer, ReturnSerializer, ReturnItemInputSerializer
 
 try:
     import stripe
@@ -195,6 +195,134 @@ class OrderDetailView(APIView):
         return Response(OrderSerializer(order).data)
 
 
+class ReturnView(APIView):
+    """
+    POST /orders/<order_pk>/return/
+    Request a full order return or partial return (specific items).
+ 
+    Full return body:   { "reason": "..." }
+    Partial return body: { "reason": "...", "items": [{"order_item_id": 1, "quantity": 1}] }
+ 
+    If no items are provided, all items in the order are returned.
+    """
+    permission_classes = [IsAuthenticated]
+ 
+    def post(self, request, order_pk):
+        # Fetch the order
+        try:
+            order = Order.objects.prefetch_related('items').get(pk=order_pk, user=request.user)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+ 
+        # Only paid orders can be returned
+        if order.status not in [Order.Status.PAID, Order.Status.PARTIALLY_RETURNED]:
+            return Response(
+                {'detail': 'Only paid orders can be returned.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        reason = request.data.get('reason', '')
+        items_data = request.data.get('items', [])
+ 
+        # If no items specified, return the full order
+        if not items_data:
+            items_to_return = [
+                {'order_item_id': item.pk, 'quantity': item.quantity}
+                for item in order.items.all()
+            ]
+            is_full_return = True
+        else:
+            # Validate each item
+            serializer = ReturnItemInputSerializer(data=items_data, many=True)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            items_to_return = serializer.validated_data
+            is_full_return = False
+ 
+        # Validate quantities against order items
+        order_items_map = {item.pk: item for item in order.items.all()}
+        return_items = []
+        refund_amount_cents = 0
+ 
+        for item_data in items_to_return:
+            order_item_id = item_data['order_item_id']
+            quantity = item_data['quantity']
+ 
+            order_item = order_items_map.get(order_item_id)
+            if not order_item:
+                return Response(
+                    {'detail': f'Order item {order_item_id} not found in this order.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if quantity > order_item.quantity:
+                return Response(
+                    {'detail': f'Cannot return more than {order_item.quantity} of {order_item.product_name}.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+ 
+            return_items.append((order_item, quantity))
+            refund_amount_cents += order_item.unit_price_cents * quantity
+ 
+        # Issue Stripe refund
+        try:
+            refund = stripe.Refund.create(
+                payment_intent=order.stripe_payment_intent_id,
+                amount=refund_amount_cents,
+            )
+        except stripe.error.StripeError as e:
+            return Response(
+                {'detail': f'Refund error: {e.user_message}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+ 
+        # Create Return record
+        return_request = Return.objects.create(
+            order=order,
+            user=request.user,
+            status=Return.Status.REFUNDED,
+            reason=reason,
+            stripe_refund_id=refund.id,
+            refund_amount_cents=refund_amount_cents,
+        )
+ 
+        # Create ReturnItems and restock
+        for order_item, quantity in return_items:
+            ReturnItem.objects.create(
+                return_request=return_request,
+                order_item=order_item,
+                quantity=quantity,
+            )
+            Product.objects.filter(pk=order_item.product_id).update(
+                stock=models.F('stock') + quantity
+            )
+ 
+        # Update order status
+        if is_full_return or not items_data:
+            order.status = Order.Status.RETURNED
+        else:
+            order.status = Order.Status.PARTIALLY_RETURNED
+        order.save(update_fields=['status'])
+ 
+        return Response(ReturnSerializer(return_request).data, status=status.HTTP_201_CREATED)
+ 
+ 
+class ReturnListView(APIView):
+    """
+    GET /orders/<order_pk>/returns/
+    List all returns for a specific order.
+    """
+    permission_classes = [IsAuthenticated]
+ 
+    def get(self, request, order_pk):
+        try:
+            order = Order.objects.get(pk=order_pk, user=request.user)
+        except Order.DoesNotExist:
+            return Response({'detail': 'Order not found.'}, status=status.HTTP_404_NOT_FOUND)
+ 
+        returns = Return.objects.filter(order=order).prefetch_related('items')
+        return Response(ReturnSerializer(returns, many=True).data)
+
+
 @csrf_exempt
 @require_POST
 def stripe_webhook(request):
@@ -222,6 +350,8 @@ def stripe_webhook(request):
         _handle_payment_succeeded(event['data']['object'])
     elif event['type'] == 'payment_intent.payment_failed':
         _handle_payment_failed(event['data']['object'])
+    elif event['type'] == 'charge.refunded':
+        _handle_refund(event['data']['object'])
 
     return HttpResponse(status=200)
 
@@ -268,5 +398,22 @@ def _handle_payment_failed(payment_intent):
         order = Order.objects.get(pk=order_id)
         order.status = Order.Status.FAILED
         order.save(update_fields=['status'])
+    except Order.DoesNotExist:
+        pass
+
+def _handle_refund(charge):
+    """
+    Updates order status to REFUNDED when a refund is processed in Stripe.
+    Note: Metadata is passed from the PaymentIntent to the Charge object.
+    """
+    order_id = charge.get('metadata', {}).get('order_id')
+    if not order_id:
+        return
+
+    try:
+        order = Order.objects.get(id=order_id)
+        if order.status != 'refunded':
+            order.status = 'refunded'
+            order.save()
     except Order.DoesNotExist:
         pass
