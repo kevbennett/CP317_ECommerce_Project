@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Alert, Button, Card, Descriptions, List, Space, Tag, Typography, message } from 'antd'
+import { Alert, Button, Card, Descriptions, List, Space, Tag, Typography, message, Modal, Checkbox, Input as AntInput } from 'antd'
+import type { CheckboxChangeEvent } from 'antd/es/checkbox'
 
 type OrderItem = {
   id: number
@@ -67,6 +68,13 @@ export default function OrderDetailsPage() {
   const [order, setOrder] = useState<OrderDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showReturnModal, setShowReturnModal] = useState(false)
+  const [returnLoading, setReturnLoading] = useState(false)
+  const [returnError, setReturnError] = useState<string | null>(null)
+  const [returnReason, setReturnReason] = useState('')
+  const [returnItems, setReturnItems] = useState<{ order_item_id: number; quantity: number }[]>([])
+  const [returns, setReturns] = useState<any[]>([])
+  const [fetchingReturns, setFetchingReturns] = useState(false)
 
   const fetchOrder = async (orderId: string) => {
     const res = await fetch(`${API_BASE_URL}/orders/${orderId}/`, {
@@ -111,6 +119,67 @@ export default function OrderDetailsPage() {
 
     void run()
   }, [id])
+
+  // Fetch returns for this order
+  useEffect(() => {
+    if (!order) return
+    setFetchingReturns(true)
+    fetch(`${API_BASE_URL}/orders/${order.id}/returns/`, {
+      headers: { Accept: 'application/json', ...getAuthHeaders() },
+      credentials: 'include',
+    })
+      .then((res) => res.ok ? res.json() : [])
+      .then((data) => setReturns(Array.isArray(data) ? data : []))
+      .catch(() => setReturns([]))
+      .finally(() => setFetchingReturns(false))
+  }, [order])
+
+  // Helper: check if order is returnable
+  const isReturnable = order && ['paid', 'partially_returned'].includes(order.status)
+
+  // Handle open return modal
+  const openReturnModal = () => {
+    if (!order) return
+    setReturnItems(order.items.map((item) => ({ order_item_id: item.id, quantity: item.quantity })))
+    setReturnReason('')
+    setReturnError(null)
+    setShowReturnModal(true)
+  }
+
+  // Handle submit return
+  const submitReturn = async () => {
+    if (!order) return
+    setReturnLoading(true)
+    setReturnError(null)
+    try {
+      const body: any = { reason: returnReason }
+      // If not all items selected, send partial
+      if (
+        returnItems.length !== order.items.length ||
+        returnItems.some((it, idx) => it.quantity !== order.items[idx].quantity)
+      ) {
+        body.items = returnItems.filter((it) => it.quantity > 0)
+      }
+      const res = await fetch(`${API_BASE_URL}/orders/${order.id}/return/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', ...getAuthHeaders() },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Return failed')
+      }
+      setShowReturnModal(false)
+      message.success('Return request submitted')
+      // Refresh order and returns
+      setTimeout(() => window.location.reload(), 800)
+    } catch (e) {
+      setReturnError(e instanceof Error ? e.message : 'Return failed')
+    } finally {
+      setReturnLoading(false)
+    }
+  }
 
   const navigateTo = (path: string) => {
     window.history.pushState({}, '', path)
@@ -157,6 +226,11 @@ export default function OrderDetailsPage() {
           <Space size={12} wrap>
             <Tag color={statusColor(order.status)}>{order.status.toUpperCase()}</Tag>
             <Text type="secondary">{formatDate(order.created_at)}</Text>
+            {isReturnable && (
+              <Button type="primary" onClick={openReturnModal} size="small">
+                Return
+              </Button>
+            )}
           </Space>
         </Space>
       </Card>
@@ -215,6 +289,105 @@ export default function OrderDetailsPage() {
           )}
         />
       </Card>
+
+      {/* Returns history */}
+      <Card style={{ marginTop: 16 }}>
+        <Text strong>Returns</Text>
+        {fetchingReturns ? (
+          <div style={{ marginTop: 8 }}><Typography.Text type="secondary">Loading returns...</Typography.Text></div>
+        ) : returns.length === 0 ? (
+          <div style={{ marginTop: 8 }}><Typography.Text type="secondary">No returns for this order.</Typography.Text></div>
+        ) : (
+          <List
+            dataSource={returns}
+            rowKey={(r) => String(r.id)}
+            renderItem={(r) => (
+              <List.Item>
+                <List.Item.Meta
+                  title={<span>Return #{r.id} <Tag color="blue">{r.status}</Tag></span>}
+                  description={<span>Reason: {r.reason || 'N/A'} | Refunded: ${((r.refund_amount_cents||0)/100).toFixed(2)}</span>}
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </Card>
+
+      {/* Return Modal */}
+      <Modal
+        title="Request a Return"
+        open={showReturnModal}
+        onCancel={() => setShowReturnModal(false)}
+        onOk={submitReturn}
+        confirmLoading={returnLoading}
+        okText="Submit Return"
+        okButtonProps={{
+          disabled: !returnReason.trim() || returnItems.length === 0 || returnItems.every((it: { order_item_id: number; quantity: number }) => it.quantity <= 0),
+        }}
+      >
+        <div style={{ marginBottom: 12 }}>
+          <AntInput.TextArea
+            rows={3}
+            placeholder="Reason for return (required)"
+            value={returnReason}
+            onChange={(e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setReturnReason(e.target.value)}
+          />
+        </div>
+        <div style={{ marginBottom: 8 }}>
+          <Checkbox
+            checked={returnItems.length === order.items.length && returnItems.every((it: { order_item_id: number; quantity: number }, idx: number) => it.quantity === order.items[idx].quantity)}
+            onChange={(e: CheckboxChangeEvent) => {
+              if (e.target.checked) {
+                setReturnItems(order.items.map((item: OrderItem) => ({ order_item_id: item.id, quantity: item.quantity })))
+              } else {
+                setReturnItems([])
+              }
+            }}
+          >
+            Return all items
+          </Checkbox>
+        </div>
+        <List
+          dataSource={order.items}
+          rowKey={(item: OrderItem) => String(item.id)}
+          renderItem={(item: OrderItem) => {
+            const selected = returnItems.find((it: { order_item_id: number; quantity: number }) => it.order_item_id === item.id)
+            return (
+              <List.Item>
+                <Checkbox
+                  checked={!!selected && selected.quantity > 0}
+                  onChange={(e: CheckboxChangeEvent) => {
+                    if (e.target.checked) {
+                      setReturnItems((prev: { order_item_id: number; quantity: number }[]) => {
+                        if (prev.some((it: { order_item_id: number; quantity: number }) => it.order_item_id === item.id)) return prev
+                        return [...prev, { order_item_id: item.id, quantity: item.quantity }]
+                      })
+                    } else {
+                      setReturnItems((prev: { order_item_id: number; quantity: number }[]) => prev.filter((it: { order_item_id: number; quantity: number }) => it.order_item_id !== item.id))
+                    }
+                  }}
+                >
+                  {item.product_name} (Qty: {item.quantity})
+                </Checkbox>
+                {selected && (
+                  <AntInput
+                    type="number"
+                    min={1}
+                    max={item.quantity}
+                    value={selected.quantity}
+                    style={{ width: 70, marginLeft: 12 }}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                      const val = Math.max(1, Math.min(item.quantity, Number(e.target.value) || 1))
+                      setReturnItems((prev: { order_item_id: number; quantity: number }[]) => prev.map((it: { order_item_id: number; quantity: number }) => it.order_item_id === item.id ? { ...it, quantity: val } : it))
+                    }}
+                  />
+                )}
+              </List.Item>
+            )
+          }}
+        />
+        {returnError && <Alert type="error" message={returnError} showIcon style={{ marginTop: 12 }} />}
+      </Modal>
 
       <div style={{ marginTop: 16 }}>
         <Button onClick={() => navigateTo('/orders')}>Back to orders</Button>

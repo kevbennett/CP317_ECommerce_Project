@@ -8,6 +8,8 @@ class Order(models.Model):
         PAID = "paid", "Paid"
         FAILED = "failed", "Failed"
         CANCELLED = "cancelled", "Cancelled"
+        RETURNED = "returned", "Returned"
+        PARTIALLY_RETURNED = "partially_returned", "Partially Returned"
 
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name="orders")
     email = models.EmailField()
