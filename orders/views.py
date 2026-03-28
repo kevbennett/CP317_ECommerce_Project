@@ -18,7 +18,8 @@ try:
 except Exception:
     stripe = None
 
-if stripe and getattr(settings, "STRIPE_SECRET_KEY", None):
+STRIPE_ENABLED = bool(stripe and getattr(settings, "STRIPE_SECRET_KEY", None))
+if STRIPE_ENABLED:
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
 
@@ -64,6 +65,14 @@ def _validate_mock_card(payload):
         return "Invalid CVC."
 
     return None
+
+
+def _mock_payment_intent_id(order_id):
+    return f"mock_pi_{order_id}"
+
+
+def _mock_refund_id(order_id, sequence):
+    return f"mock_refund_{order_id}_{sequence}"
 
 
 class CheckoutView(APIView):
@@ -131,7 +140,7 @@ class CheckoutView(APIView):
         order.calculate_total()
 
         # Create Stripe PaymentIntent if configured; otherwise mock payment.
-        if stripe and getattr(settings, "STRIPE_SECRET_KEY", None):
+        if STRIPE_ENABLED:
             try:
                 intent = stripe.PaymentIntent.create(
                     amount=order.total_price_cents,
@@ -155,7 +164,7 @@ class CheckoutView(APIView):
                 return Response({'detail': error}, status=status.HTTP_400_BAD_REQUEST)
 
             order.status = Order.Status.PAID
-            order.stripe_payment_intent_id = "mock_intent"
+            order.stripe_payment_intent_id = _mock_payment_intent_id(order.pk)
             order.stripe_client_secret = ""
             order.save(update_fields=['status', 'stripe_payment_intent_id', 'stripe_client_secret'])
 
@@ -263,17 +272,22 @@ class ReturnView(APIView):
             return_items.append((order_item, quantity))
             refund_amount_cents += order_item.unit_price_cents * quantity
  
-        # Issue Stripe refund
-        try:
-            refund = stripe.Refund.create(
-                payment_intent=order.stripe_payment_intent_id,
-                amount=refund_amount_cents,
-            )
-        except stripe.error.StripeError as e:
-            return Response(
-                {'detail': f'Refund error: {e.user_message}'},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+        # Issue Stripe refund if configured; otherwise mock refund.
+        if STRIPE_ENABLED:
+            try:
+                refund = stripe.Refund.create(
+                    payment_intent=order.stripe_payment_intent_id,
+                    amount=refund_amount_cents,
+                )
+            except stripe.error.StripeError as e:
+                return Response(
+                    {'detail': f'Refund error: {e.user_message}'},
+                    status=status.HTTP_502_BAD_GATEWAY,
+                )
+            refund_id = refund.id
+        else:
+            refund_sequence = Return.objects.filter(order=order).count() + 1
+            refund_id = _mock_refund_id(order.pk, refund_sequence)
  
         # Create Return record
         return_request = Return.objects.create(
@@ -281,7 +295,7 @@ class ReturnView(APIView):
             user=request.user,
             status=Return.Status.REFUNDED,
             reason=reason,
-            stripe_refund_id=refund.id,
+            stripe_refund_id=refund_id,
             refund_amount_cents=refund_amount_cents,
         )
  
@@ -334,6 +348,9 @@ def stripe_webhook(request):
       - payment_intent.succeeded  → mark order PAID, decrement stock, send email
       - payment_intent.payment_failed → mark order FAILED
     """
+    if not STRIPE_ENABLED:
+        return HttpResponse('Stripe not configured.', status=400)
+
     payload = request.body
     sig_header = request.META.get('HTTP_STRIPE_SIGNATURE', '')
 
