@@ -1,6 +1,6 @@
-# Canadian Catalog — User Manual & Quick Start
+# Canadian Catalog ï¿½ User Manual & Quick Start
 
-This guide is a 1–2 page quick start for evaluators. It explains how to run the system locally, provides test credentials, and walks through the major features.
+This guide explains how to run the system locally, provides test credentials, and walks through the major features.
 
 **System Overview**
 Canadian Catalog is a full-stack e-commerce demo built with a Django REST backend and a React (Vite) frontend. The frontend runs on `http://127.0.0.1:5173` and talks to the backend on `http://127.0.0.1:8000` via the `/api` proxy. A SQLite database (`db.sqlite3`) is already included with sample products and categories.
@@ -61,7 +61,7 @@ You can also create new user accounts via the **Sign up** page in the frontend.
 
 ---
 
-## Major Features — Step by Step
+## Major Features ï¿½ Step by Step
 
 ### 1) Browse Products
 1. Go to **Products** in the top navigation.
