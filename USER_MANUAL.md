@@ -61,7 +61,7 @@ You can also create new user accounts via the **Sign up** page in the frontend.
 
 ---
 
-## Major Features � Step by Step
+## Major Features
 
 ### 1) Browse Products
 1. Go to **Products** in the top navigation.
